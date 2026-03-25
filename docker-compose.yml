@@ -1,0 +1,60 @@
+services:
+  # Directus — headless CMS + REST/GraphQL API + MCP server + admin UI
+  # Docs: https://docs.directus.io/self-hosted/docker-guide.html
+  directus:
+    image: directus/directus:11
+    ports:
+      - "8055:8055"
+    volumes:
+      - directus-uploads:/directus/uploads
+      - directus-extensions:/directus/extensions
+    environment:
+      # Security key for token signing (change in production)
+      SECRET: "nexus-aikalabs-secret-change-me"
+
+      # Admin account (created on first startup only)
+      ADMIN_EMAIL: "admin@aikalabs.com"
+      ADMIN_PASSWORD: "admin123"
+
+      # PostgreSQL connection
+      DB_CLIENT: "pg"
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_DATABASE: "directus"
+      DB_USER: "directus"
+      DB_PASSWORD: "directus_pass"
+
+      # WebSockets for real-time updates
+      WEBSOCKETS_ENABLED: "true"
+
+      # CORS — allow nexus-ui and AgentOS
+      CORS_ENABLED: "true"
+      CORS_ORIGIN: "http://localhost:3001,http://localhost:7777,http://localhost:8055"
+
+      # Public URL (for file URLs and redirects)
+      PUBLIC_URL: "http://localhost:8055"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # PostgreSQL 16 — the source of truth for all data
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: directus
+      POSTGRES_USER: directus
+      POSTGRES_PASSWORD: directus_pass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U directus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  directus-uploads:
+  directus-extensions:
+  postgres-data:
