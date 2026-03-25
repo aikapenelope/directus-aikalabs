@@ -1,44 +1,92 @@
 # Directus — NEXUS Data Layer
 
-Data infrastructure for the NEXUS multi-agent system. Replaces Twenty CRM with a complete data platform: CRM, conversations, events, knowledge base, and automation flows.
-
-## What this is
-
-- **Directus** — headless CMS with admin UI, REST/GraphQL API, and MCP server
-- **PostgreSQL 16** — source of truth for all business data
-- **MCP Server** — official Directus MCP (`@directus/content-mcp`) for AI agent access
+Data infrastructure for the NEXUS multi-agent system (AikaLabs). CRM, conversations, events, knowledge base, and automation flows — all in one platform with AI agent access via MCP.
 
 ## Quick Start
 
 ```bash
-# 1. Clone
 git clone https://github.com/aikapenelope/directus-aikalabs.git
 cd directus-aikalabs
-
-# 2. Start
-docker compose up -d
-
-# 3. Wait ~30 seconds, then open
-open http://localhost:8055
+cp .env.example .env        # Edit with your credentials
+docker compose up -d         # Wait ~30 seconds
+open http://localhost:8055   # Login with your admin credentials
 ```
-
-Login: `admin@aikalabs.com` / `admin123`
 
 ## Ports
 
 | Port | Service |
 |------|---------|
+| 3001 | nexus-ui (Next.js dashboard) |
+| 7777 | AgentOS (Agno agents) |
 | 8055 | Directus (admin UI + API + MCP) |
 | 5432 | PostgreSQL |
 
-## Connect to NEXUS (Agno)
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│           BUSINESS DATA (permanent, yours)           │
+│                                                      │
+│  Directus + PostgreSQL (localhost:8055)               │
+│  ├── contacts, companies         (CRM)               │
+│  ├── conversations               (WhatsApp/chat log) │
+│  ├── tickets, payments, tasks    (operations)        │
+│  ├── events                      (raw audit trail)   │
+│  └── knowledge_items             (solutions/patterns) │
+│                                                      │
+│  Access: MCP · REST API · GraphQL · SQL direct       │
+└──────────────────┬──────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────┐
+│           AI LAYER (replaceable)                     │
+│                                                      │
+│  Agno / Mastra / LangChain (localhost:7777)          │
+│  ├── Sessions, traces        (framework-specific)    │
+│  ├── Vectors/embeddings      (LanceDB / pgvector)    │
+│  └── Agents, teams, workflows                        │
+│                                                      │
+│  If you switch frameworks, business data stays.      │
+└──────────────────┬──────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────┐
+│           FRONTEND (localhost:3001)                   │
+│                                                      │
+│  nexus-ui reads from both:                           │
+│  ├── Directus REST API → CRM, analytics, dashboard   │
+│  └── AgentOS REST API  → agents, teams, chat         │
+└─────────────────────────────────────────────────────┘
+```
+
+## Data Flow: WhatsApp → Directus (0 tokens)
+
+```
+WhatsApp message arrives
+    │
+    ▼
+Agno pre_hook (Python, 0 tokens):
+    ├── POST directus/items/events      (raw log)
+    └── POST directus/items/contacts    (upsert by phone)
+    │
+    ▼
+Agent responds (tokens — MiniMax/OpenAI):
+    └── Reads client context via MCP (read-items contacts)
+    │
+    ▼
+Agno post_hook (Python, 0 tokens):
+    ├── POST directus/items/conversations (message + response)
+    └── POST directus/items/tickets       (if support interaction)
+    │
+    ▼
+nexus-ui reads from Directus REST API to display in dashboard
+```
+
+## MCP Integration with Agno
 
 ### 1. Generate a Directus token
 
 1. Open http://localhost:8055
-2. Go to User Directory → your user
-3. Scroll to **Token** field → Generate → Copy
-4. Click **Save** (important!)
+2. User Directory → your user → scroll to **Token** → Generate → Copy
+3. **Save the user** (important!)
 
 ### 2. Add to ~/.zshrc
 
@@ -47,9 +95,11 @@ export DIRECTUS_URL="http://localhost:8055"
 export DIRECTUS_TOKEN="your-token-here"
 ```
 
-### 3. MCP in nexus.py
+### 3. In nexus.py
 
 ```python
+from agno.tools.mcp import MCPTools
+
 MCPTools(
     command="npx @directus/content-mcp@latest",
     env={
@@ -59,9 +109,7 @@ MCPTools(
 )
 ```
 
-## MCP Tools Available
-
-The Directus MCP server provides 20 tools:
+## MCP Tools (20 total)
 
 | Tool | Description |
 |------|-------------|
@@ -89,8 +137,6 @@ The Directus MCP server provides 20 tools:
 Source: [directus/mcp](https://github.com/directus/mcp)
 
 ## Data Schema
-
-Create these collections in Directus for the NEXUS system:
 
 ### contacts
 | Field | Type | Description |
@@ -165,38 +211,69 @@ Create these collections in Directus for the NEXUS system:
 | payload | JSON | Raw event data |
 | contact | M2O → contacts | Related contact (nullable) |
 
-## Architecture
+## Roadmap
 
-```
-nexus-ui (localhost:3001)
-    │
-    ├── Directus REST API (localhost:8055/items/*)
-    │
-AgentOS (localhost:7777)
-    │
-    ├── Directus MCP (@directus/content-mcp)
-    │       ├── read-items, create-item, update-item
-    │       ├── read-collections, read-fields
-    │       ├── trigger-flow (automations)
-    │       └── 20 tools total
-    │
-    └── Direct REST API (for pre/post hooks, 0 tokens)
-            └── POST http://localhost:8055/items/events
-```
+### Phase 1: Setup ✅
+- [x] Docker Compose (Directus 11 + PostgreSQL 16)
+- [x] Environment configuration (.env, no credentials in repo)
+- [x] Documentation, schema design, architecture
+
+### Phase 2: Schema & Collections
+- [ ] Create 7 collections in Directus UI (contacts, companies, conversations, tickets, payments, tasks, events)
+- [ ] Configure field types, dropdowns, and M2O relationships
+- [ ] Set up Kanban views for tickets (open → resolved → escalated) and tasks (todo → in_progress → done)
+- [ ] Create dedicated MCP user with scoped permissions (read/write items, no admin)
+- [ ] Generate static token for MCP access
+
+### Phase 3: Connect Agno → Directus
+- [ ] Replace Twenty MCP with Directus MCP (`@directus/content-mcp`) in nexus.py
+- [ ] Add pre_hook: auto-log WhatsApp messages to events collection (0 tokens)
+- [ ] Add pre_hook: auto-create/update contact by phone number (0 tokens)
+- [ ] Add post_hook: save conversation (raw_message + agent_response + intent) (0 tokens)
+- [ ] Update support agent tools to use Directus `create-item` via MCP
+- [ ] Remove Twenty dependencies, tools, and skills from Agno repo
+
+### Phase 4: Connect nexus-ui → Directus
+- [ ] Replace `lib/twenty.ts` with `lib/directus.ts` (REST API client)
+- [ ] Update `/crm` page to read contacts, companies, tasks, notes from Directus
+- [ ] Add conversation history view (all WhatsApp/chat interactions per contact)
+- [ ] Dashboard stats from Directus (total contacts, conversations today, open tickets)
+- [ ] Remove NEXT_PUBLIC_TWENTY_* environment variables
+
+### Phase 5: Automations (Directus Flows)
+- [ ] Flow: WhatsApp incoming → auto-log in events (webhook trigger, 0 tokens)
+- [ ] Flow: New contact created → assign default lead_score and status
+- [ ] Flow: lead_score >= 7 → auto-create follow-up task
+- [ ] Flow: Payment status → approved → send webhook notification
+- [ ] Flow: Ticket escalated → create urgent task + notify team
+- [ ] Flow: Daily schedule → export conversation summary (batch, 1 LLM call/day)
+
+### Phase 6: Analytics & Knowledge
+- [ ] Batch daily digest: analyze all conversations from yesterday (1 LLM call)
+- [ ] Dashboard metrics: conversations/day, avg response time, lead conversion rate
+- [ ] Knowledge base sync: agent learned_knowledge → Directus knowledge_items collection
+- [ ] Backup schedule: pg_dump daily to local folder
+- [ ] Sentiment trends over time (from conversations collection)
+
+### Phase 7: Multi-framework & Scale
+- [ ] Test Directus MCP with Mastra framework
+- [ ] pgvector extension in PostgreSQL (move vectors from LanceDB)
+- [ ] Document REST API patterns for framework-agnostic access
+- [ ] Rate limiting and API key rotation for production
+- [ ] Multi-user roles (admin, support agent, viewer)
 
 ## Compatibility
 
-The data lives in PostgreSQL, accessible via:
-- **Directus MCP** — for Agno, Mastra, or any MCP-compatible framework
-- **Directus REST API** — for any HTTP client (nexus-ui, mobile apps)
-- **Directus GraphQL** — for complex queries
-- **PostgreSQL direct** — for any framework with a DB driver
-
-If you migrate from Agno to Mastra or LangChain, the data stays.
+Data lives in PostgreSQL, accessible via:
+- **Directus MCP** — Agno, Mastra, or any MCP-compatible framework
+- **Directus REST API** — any HTTP client (nexus-ui, mobile apps, Zapier)
+- **Directus GraphQL** — complex relational queries
+- **PostgreSQL direct** — any framework with a DB driver (SQLAlchemy, Prisma, etc.)
 
 ## References
 
 - [Directus Docs](https://docs.directus.io)
 - [Directus MCP Server](https://github.com/directus/mcp)
-- [Directus Docker Guide](https://docs.directus.io/self-hosted/docker-guide.html)
 - [Directus MCP Tools](https://directus.io/docs/guides/ai/mcp/tools)
+- [Directus Docker Guide](https://docs.directus.io/self-hosted/docker-guide.html)
+- [Directus Flows](https://docs.directus.io/app/flows.html)
