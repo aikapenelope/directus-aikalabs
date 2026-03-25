@@ -194,6 +194,43 @@ The data lives in PostgreSQL, accessible via:
 
 If you migrate from Agno to Mastra or LangChain, the data stays.
 
+## Roadmap
+
+### Phase 1: Setup (this PR) ✅
+- [x] Docker Compose (Directus 11 + PostgreSQL 16)
+- [x] Environment configuration
+- [x] Documentation and schema design
+
+### Phase 2: Schema & Collections
+- [ ] Create 7 collections in Directus (contacts, companies, conversations, tickets, payments, tasks, events)
+- [ ] Configure field types, dropdowns, and relationships (M2O)
+- [ ] Set up Kanban views for tickets and tasks
+- [ ] Create MCP user with scoped permissions
+
+### Phase 3: Connect Agno
+- [ ] Replace Twenty MCP with Directus MCP in nexus.py
+- [ ] Update support agent tools to use Directus `create-item`
+- [ ] Update nexus-ui `/crm` page to read from Directus REST API
+- [ ] Remove Twenty dependencies from Agno repo
+
+### Phase 4: Automations (Directus Flows)
+- [ ] Flow: WhatsApp incoming → auto-log in events collection (0 tokens)
+- [ ] Flow: WhatsApp incoming → auto-create/update contact (0 tokens)
+- [ ] Flow: High lead score → create follow-up task
+- [ ] Flow: Payment approved → notify via webhook
+- [ ] Flow: Ticket escalated → alert team
+
+### Phase 5: Analytics & Optimization
+- [ ] Batch daily digest (1 LLM call/day for conversation analysis)
+- [ ] Dashboard metrics from events collection
+- [ ] Knowledge base integration (learned solutions → Directus)
+- [ ] Backup schedule (pg_dump)
+
+### Phase 6: Multi-framework Compatibility
+- [ ] Test Directus MCP with Mastra
+- [ ] Document REST API patterns for framework-agnostic access
+- [ ] pgvector extension for RAG directly in PostgreSQL
+
 ## References
 
 - [Directus Docs](https://docs.directus.io)
